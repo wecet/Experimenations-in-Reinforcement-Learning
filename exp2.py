@@ -1,6 +1,7 @@
 import numpy as np 
 import gym   
-import random 
+import random
+from collections import defaultdict
 
 env = gym.make("Taxi-v3")
 env.render()
@@ -84,4 +85,65 @@ for episode in range(total_test_episodes):
             break
         state = new_state
 env.close()
-print ("Score: " +  str(sum(rewards)/total_test_episodes))
+score = sum(rewards)/total_test_episodes
+print("Score: " + str(score))
+print("End of Q-Learning ------------------")
+print("")
+print("Start of SARSA ---------------------")
+
+
+class SARSA():
+
+    def __init__(self, gamma=0.95, learning_rate=0.9, epsilon=0.2, nepisodes=10000):
+        self.gamma = gamma
+        self.learning_rate = learning_rate
+        self.epsilon = epsilon
+        self.nepisodes = nepisodes
+        self.Q = defaultdict(lambda: np.zeros(env.action_space.n))
+
+    def greedy_policy(self, state):
+        return np.argmax(self.Q[state])
+
+    def epsilon_greedy_policy(self, state):
+        action = 0
+        if np.random.uniform() < self.epsilon:
+            action = np.random.choice(env.action_space.n)
+        else:
+            action = self.greedy_policy(state)
+        return action
+
+    def onpolicy_control(self):
+        for episode in range(self.nepisodes):
+            state = env.reset()
+            done = False
+            action = self.epsilon_greedy_policy(state)
+            while not done:
+                next_state, reward, done, info = env.step(action)
+                next_action = self.epsilon_greedy_policy(next_state)
+                self.Q[state][action] = self.Q[state][action] + self.learning_rate * (
+                            reward + self.gamma * self.Q[next_state][next_action] - self.Q[state][action])
+                state = next_state
+                action = next_action
+            res = self.test_policy(200)
+            if episode % 100 == 0:
+                print(f'Episode: {episode} Success%: {res}')
+            if res > 70:
+                print(f'Solved! Episode: {episode} Success%: {res}')
+                return self.Q
+        return self.Q
+
+    def test_policy(self, n):
+        success = 0
+        for episode in range(n):
+            state = env.reset()
+            done = False
+            while not done:
+                action = self.greedy_policy(state)
+                state, reward, done, info = env.step(action)
+            if reward == 1:
+                success += 1
+        return success / n * 100
+
+a = SARSA()
+Q = a.onpolicy_control()
+a.test_policy(100)
