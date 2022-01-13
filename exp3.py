@@ -1,5 +1,6 @@
 import copy
 
+import tensorflow as tf
 import gym
 import random
 import torch
@@ -17,6 +18,9 @@ from gym.wrappers.monitoring.video_recorder import VideoRecorder
 from IPython.display import HTML
 from IPython import display 
 import glob
+
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 env = gym.make('LunarLander-v2')
 env.seed(0)
@@ -276,7 +280,7 @@ show_video_of_model(agent, 'LunarLander-v2', 'vid.mp4')
 
 show_video('LunarLander-v2')
 
-
+""""
 class Actor_Model:
     def __init__(self, input_shape, action_space, lr, optimizer):
         X_input = Input(input_shape)
@@ -420,4 +424,4 @@ def run_batch(self):  # train every self.Training_batch episodes
                 state, done, score, SAVING = self.env.reset(), False, 0, ''
                 state = np.reshape(state, [1, self.state_size[0]])
 
-        self.replay(states, actions, rewards, predictions, dones, next_states)
+        self.replay(states, actions, rewards, predictions, dones, next_states) """
