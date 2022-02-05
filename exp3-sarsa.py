@@ -1,71 +1,143 @@
+import matplotlib
 import numpy as np
 import gym
-import random
-from collections import defaultdict
 import matplotlib.pyplot as plt
+from sklearn.kernel_approximation import RBFSampler
+import sklearn.pipeline
+import sklearn.preprocessing
+import pickle
 
-env = gym.make("LunarLander-v2")
-env.seed(0)
+env = gym.make('LunarLander-v2')
 
-action_size = env.action_space.n
-print("Action Size: ", action_size)
+num_episodes = 5000
+discount_factor = 0.99
+alpha = 0.1
+nA = env.action_space.n
 
-state_size = env.observation_space.shape
-print("State Size: ", state_size[0])
+#Parameter vector define number of parameters per action based on featurizer size
+w = np.zeros((nA,400))
 
-class Sarsa_Agent():
+# Plots
+plt_actions = np.zeros(nA)
+episode_rewards = np.zeros(num_episodes)
 
-    def __init__(self, gamma=0.95, learning_rate=0.8, epsilon=0.2, nepisodes=40000):
-        self.gamma = gamma
-        self.learning_rate = learning_rate
-        self.epsilon = epsilon
-        self.nepisodes = nepisodes
-        self.Q = defaultdict(lambda: np.zeros(env.action_space.n))
+# Get satistics over observation space samples for normalization
+observation_examples = np.array([env.observation_space.sample() for x in range(10000)])
+scaler = sklearn.preprocessing.StandardScaler()
+scaler.fit(observation_examples)
 
-    def greedy_policy(self, state):
-        return np.argmax(self.Q[state])
+# Create radial basis function sampler to convert states to features for nonlinear function approx
+featurizer = sklearn.pipeline.FeatureUnion([
+        ("rbf1", RBFSampler(gamma=5.0, n_components=100)),
+        ("rbf2", RBFSampler(gamma=2.0, n_components=100)),
+        ("rbf3", RBFSampler(gamma=1.0, n_components=100)),
+        ("rbf4", RBFSampler(gamma=0.5, n_components=100))
+		])
+# Fit featurizer to our scaled inputs
+featurizer.fit(scaler.transform(observation_examples))
+#featurizer.fit(observation_examples)
 
-    def epsilon_greedy_policy(self, state):
-        action = 0
-        if np.random.uniform() < self.epsilon:
-            action = np.random.choice(env.action_space.n)
-        else:
-            action = self.greedy_policy(state)
-        return action
+# Normalize and turn into feature
 
-    def onpolicy_control(self):
-        for episode in range(self.nepisodes):
-            state = env.reset()
-            state = state[0]
-            done = False
-            action = self.epsilon_greedy_policy(state)
-            while not done:
-                next_state, reward, done, info = env.step(action)
-                next_action = self.epsilon_greedy_policy(next_state)
-                self.Q[state][action] = self.Q[state][action] + self.learning_rate * (
-                            reward + self.gamma * self.Q[next_state][next_action] - self.Q[state][action])
-                state = next_state
-                action = next_action
-            res = self.test_policy(200)
-            if episode % 100 == 0:
-                print(f'Episode: {episode} Success%: {res}')
-            if res > 70:
-                print(f'Solved! Episode: {episode} Success%: {res}')
-                return self.Q
-        return self.Q
+def featurize_state(state):
+	# Transform data
+	scaled = scaler.transform([state])
+	featurized = featurizer.transform(scaled)
+	#featurized = featurizer.transform([state])
+	return featurized
 
-    def test_policy(self, n):
-        success = 0
-        for episode in range(n):
-            state = env.reset()
-            done = False
-            while not done:
-                action = self.greedy_policy(state)
-                state, reward, done, info = env.step(action)
-            if reward == 1:
-                success += 1
-        return success / n * 100
+def Q(state,action,w):
+	value = state.dot(w[action])
+	return value
 
-a = Sarsa_Agent()
-Q = a.onpolicy_control()
-a.test_policy(100)
+# Epsilon greedy policy
+def policy(state, weight, epsilon=0.001):
+	A = np.ones(nA,dtype=float) * epsilon/nA
+	best_action =  np.argmax([Q(state,a,w) for a in range(nA)])
+	A[best_action] += (1.0-epsilon)
+	sample = np.random.choice(nA,p=A)
+	return sample
+
+# Helper function save params
+def save_params(fname, param_list):
+    file = open(fname+'.obj', 'wb')
+    pickle.dump(param_list, file)
+    file.close()
+
+# Helper function load params
+def load_params(fname):
+    file = open(fname+'.obj', 'rb')
+    param_list = pickle.load(file)
+    return param_list
+
+
+# Our main training loop
+mov_avg_result = 0.
+
+for e in range(num_episodes):
+
+    state = env.reset()
+    state = featurize_state(state)
+
+    while True:
+
+        # env.render()
+        # Sample from our policy
+        action = policy(state, w)
+
+        # Statistic for graphing
+        plt_actions[action] += 1
+        # Step environment and get next state and make it a feature
+        next_state, reward, done, _ = env.step(action)
+        next_state = featurize_state(next_state)
+
+        # Figure out what our policy tells us to do for the next state
+        next_action = policy(next_state, w)
+
+        # Statistic for graphing
+        episode_rewards[e] += reward
+
+        # Figure out target and td error
+        target = reward + discount_factor * Q(next_state, next_action, w)
+        td_error = target - Q(state, action, w)
+
+        # Find gradient with code to check it commented below (check passes)
+        dw = (td_error).dot(state)
+
+        # Update weight
+        w[action] += alpha * dw
+
+        if done:
+            break
+        # update our state
+        state = next_state
+
+    if e > 100:
+        mov_avg_result = np.mean(episode_rewards[e - 100:e])
+        if mov_avg_result >= 195:
+            print(f'Solved! Episode: {e} Average Score: {mov_avg_result}')
+            save_params('weights2', [w, scaler, featurizer])
+            break
+
+    if e > 0 and e % 100 == 0:
+        print(f'Episode: {e} Average Score: {mov_avg_result}')
+
+
+plt.plot(np.arange(e),episode_rewards[0:e])
+plt.show()
+
+env.close()
+
+w, scaler, featurizer = load_params('weights2')
+
+# test our trained model
+for episodes in range(10):
+	done = False
+	s = env.reset()
+	while not done:
+		s = featurize_state(s)
+		env.render()
+		a = policy(s, w, 0)
+		s, r, done, info = env.step(a)
+
+env.close()
