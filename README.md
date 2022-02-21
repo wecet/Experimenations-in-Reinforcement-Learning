@@ -27,4 +27,5 @@ average reward between 9 and 9.5. In the tackling of this environment, the SARSA
 
 The third experiment tries to solve the OpenAI Gym LunarLander-v2 environment. The environment can be considered solved with an
 average reward above 195. In the tackling of this environment, the SARSA and Q-Learning algorithms alongside the more traditional CEM were considered in the solution.
+
 ![image](https://user-images.githubusercontent.com/73174341/154957793-4043fe73-4366-487d-a449-1285854663a5.png)
